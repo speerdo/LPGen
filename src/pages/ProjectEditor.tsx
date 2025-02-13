@@ -83,7 +83,7 @@ function ProjectEditor() {
         created_by: user.id,
         is_current: true,
       });
-      setVersions([newVersion, ...versions]);
+      setVersions([newVersion, ...versions.map(v => ({ ...v, is_current: false }))]);
       setCurrentVersion(newVersion);
     } catch (err) {
       console.error('Error saving version:', err);
@@ -120,13 +120,18 @@ function ProjectEditor() {
       if (result.error) {
         setError(result.error);
       } else {
+        const newVersion = await createVersion({
+          project_id: projectId,
+          version_number: (versions.length || 0) + 1,
+          html_content: result.html,
+          created_by: user!.id,
+          is_current: true,
+        });
+        
         setEditorContent(result.html);
-        if (currentVersion) {
-          setCurrentVersion({
-            ...currentVersion,
-            html_content: result.html,
-          });
-        }
+        setCurrentVersion(newVersion);
+        setVersions([newVersion, ...versions.map(v => ({ ...v, is_current: false }))]);
+        
         setShowAiPrompt(false);
         setAiPrompt('');
       }
