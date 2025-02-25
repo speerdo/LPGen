@@ -67,7 +67,7 @@ export async function makeScrapingBeeRequest(
     const timestamp = new Date().toISOString();
 
     // Second request to get screenshot
-    console.log('[ScrapingBee] Making logo request...');
+    console.log('[ScrapingBee] Making screenshot request...');
     const screenshotParams = new URLSearchParams({
       ...Object.fromEntries(params),
       'screenshot': 'true',
@@ -85,14 +85,14 @@ export async function makeScrapingBeeRequest(
       })
     });
 
-    const logoResponse = await fetch(`${baseUrl}?${screenshotParams.toString()}`);
+    const screenshotResponse = await fetch(`${baseUrl}?${screenshotParams.toString()}`);
     
-    if (logoResponse.ok) {
-      const logoBlob = await logoResponse.blob();
-      if (logoBlob.size > 0) {
-        const isValid = await validateImage(logoBlob);
+    if (screenshotResponse.ok) {
+      const screenshotBlob = await screenshotResponse.blob();
+      if (screenshotBlob.size > 0) {
+        const isValid = await validateImage(screenshotBlob);
         if (!isValid) {
-          console.error('[ScrapingBee] Logo is invalid (blank or corrupted image detected)');
+          console.error('[ScrapingBee] Screenshot is invalid (blank or corrupted image detected)');
           // Fallback attempt: wait longer to let page load and then re-request the screenshot.
           const fallbackScreenshotParams = new URLSearchParams({
               ...Object.fromEntries(params),
@@ -109,31 +109,31 @@ export async function makeScrapingBeeRequest(
             const fallbackBlob = await fallbackResponse.blob();
             if (fallbackBlob.size > 0 && await validateImage(fallbackBlob)) {
               const projectId = 'default-project-id';
-              const logoUrl = await uploadScreenshot(fallbackBlob, projectId);
-              return { html, logo: logoUrl, timestamp };
+              const screenshotUrl = await uploadScreenshot(fallbackBlob, projectId);
+              return { html, screenshot: screenshotUrl, timestamp };
             }
           }
         } else {
           const projectId = 'default-project-id';
-          const logoUrl = await uploadScreenshot(logoBlob, projectId);
+          const screenshotUrl = await uploadScreenshot(screenshotBlob, projectId);
           // Extract site color palette using ColorThief.
           let palette: number[][] = [];
           try {
-            palette = await extractSitePalette(logoUrl);
+            palette = await extractSitePalette(screenshotUrl);
             console.log('[ScrapingBee] Got palette from ColorThief:', palette);
             const dominantColor = palette.length > 0 ? palette[0] : [];
             console.log('[ScrapingBee] Dominant color:', dominantColor);
-            return { html, logo: logoUrl, timestamp, palette };
+            return { html, screenshot: screenshotUrl, timestamp, palette };
           } catch (err) {
             console.error('Failed to extract color palette:', err);
-            return { html, logo: logoUrl, timestamp };
+            return { html, screenshot: screenshotUrl, timestamp };
           }
         }
       } else {
-        console.log('[ScrapingBee] Logo blob size is zero');
+        console.log('[ScrapingBee] Screenshot blob size is zero');
       }
     } else {
-      console.error('[ScrapingBee] Screenshot request failed:', await logoResponse.text());
+      console.error('[ScrapingBee] Screenshot request failed:', await screenshotResponse.text());
     }
 
     // Return HTML only if screenshot fails
