@@ -32,9 +32,9 @@ function ProjectEditor() {
   const [error, setError] = useState<string | null>(null);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [editorContent, setEditorContent] = useState('');
-  const [viewMode, setViewMode] = useState<'code' | 'preview' | 'split'>('split');
+  const [viewMode, setViewMode] = useState<'code' | 'preview' | 'split'>('preview');
   const [aiPrompt, setAiPrompt] = useState('');
-  const [showAiPrompt, setShowAiPrompt] = useState(false);
+  const [showAiPrompt, setShowAiPrompt] = useState(true);
   const [monacoInstance, setMonacoInstance] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
   const [projectData, setProjectData] = useState<Project | null>(null);
 
@@ -274,15 +274,15 @@ function ProjectEditor() {
                   htmlFor="ai-prompt"
                   className="block text-sm font-medium text-gray-700 mb-2"
                 >
-                  Describe your landing page
+                  Update the landing page
                 </label>
                 <textarea
                   id="ai-prompt"
                   rows={3}
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder="E.g., Create a modern landing page for a SaaS product with a hero section, features, and pricing"
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                  placeholder="E.g., Change the background color to blue and add a new section for testimonials"
+                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2"
                 />
               </div>
               <button
