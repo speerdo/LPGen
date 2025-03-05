@@ -161,12 +161,12 @@ function Dashboard() {
                 key={project.id}
                 className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow"
               >
-                <div className="aspect-w-16 aspect-h-9 bg-gray-100">
+                <div className="aspect-auto aspect-h-9 bg-gray-100">
                   {project.settings?.extracted_styles?.images?.[0] ? (
                     <img
                       src={project.settings.extracted_styles.images[0]}
                       alt={project.name}
-                      className="object-cover w-full h-full"
+                      className="object-cover object-top w-full h-full max-h-56 min-h-56"
                     />
                   ) : (
                     <div className="flex items-center justify-center">
