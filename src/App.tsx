@@ -5,6 +5,9 @@ import Dashboard from './pages/Dashboard';
 import NewProject from './pages/NewProject';
 import ProjectEditor from './pages/ProjectEditor';
 import Login from './pages/Login';
+import Signup from './pages/Signup';
+import Account from './pages/Account';
+import PaymentSuccess from './pages/PaymentSuccess';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -15,6 +18,7 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
           <Route
             path="/dashboard"
             element={
@@ -36,6 +40,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <ProjectEditor />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/account"
+            element={
+              <ProtectedRoute>
+                <Account />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/payment-success"
+            element={
+              <ProtectedRoute>
+                <PaymentSuccess />
               </ProtectedRoute>
             }
           />

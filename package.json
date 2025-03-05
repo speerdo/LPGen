@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
+    "@stripe/stripe-js": "^5.9.0",
     "@supabase/supabase-js": "^2.39.7",
     "clsx": "^2.1.0",
     "colorthief": "^2.6.0",
@@ -18,7 +19,8 @@
     "openai": "^4.28.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.22.2"
+    "react-router-dom": "^6.22.2",
+    "stripe": "^17.7.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
