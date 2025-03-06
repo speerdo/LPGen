@@ -19,6 +19,7 @@ import Navbar from '../components/Navbar';
 import { getProjectVersions, createVersion, getProject } from '../lib/supabase';
 import { generateLandingPageEdit } from '../lib/ai/editor';
 import type { Version, Project } from '../types/database';
+import { deductTokens, TOKENS_PER_LANDING_PAGE } from '../services/stripe';
 
 function ProjectEditor() {
   const { projectId } = useParams();
@@ -111,25 +112,46 @@ function ProjectEditor() {
       return;
     }
 
+    // Check and deduct tokens before generating
+    try {
+      if (!user) {
+        setError('You must be logged in to generate content');
+        return;
+      }
+      
+      await deductTokens(user.id, TOKENS_PER_LANDING_PAGE);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Insufficient tokens') {
+        setError('You do not have enough tokens. Please upgrade your plan or purchase more tokens.');
+        return;
+      }
+      console.error('Error checking tokens:', error);
+      setError('Failed to check token balance');
+      return;
+    }
+
     setIsGenerating(true);
     setError(null);
 
     try {
+      // Use screenshot from current version (if available)
       const screenshotUrl = currentVersion?.settings?.screenshot || '';
       const result = await generateLandingPageEdit(editorContent, aiPrompt, screenshotUrl);
       if (result.error) {
         setError(result.error);
       } else {
+        // Create a new version with the generated HTML
         const newVersion = await createVersion({
           project_id: projectId,
           version_number: (versions.length || 0) + 1,
           html_content: result.html,
-          created_by: user!.id,
+          created_by: user.id,
           is_current: true,
         });
         
         setEditorContent(result.html);
         setCurrentVersion(newVersion);
+        // Update the versions list: mark all previous versions as not current
         setVersions([newVersion, ...versions.map(v => ({ ...v, is_current: false }))]);
         
         setShowAiPrompt(false);

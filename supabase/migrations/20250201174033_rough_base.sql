@@ -104,3 +104,36 @@ BEGIN
     )
   );
 END $$;
+
+-- Create user_subscriptions table
+CREATE TABLE user_subscriptions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  plan_type TEXT NOT NULL CHECK (plan_type IN ('free', 'premium', 'enterprise')),
+  token_balance INTEGER NOT NULL DEFAULT 0,
+  tokens_used INTEGER NOT NULL DEFAULT 0,
+  next_reset_date TIMESTAMP WITH TIME ZONE NOT NULL,
+  stripe_customer_id TEXT,
+  stripe_subscription_id TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- Create indexes
+CREATE INDEX idx_user_subscriptions_user_id ON user_subscriptions(user_id);
+CREATE INDEX idx_user_subscriptions_stripe_customer_id ON user_subscriptions(stripe_customer_id);
+CREATE INDEX idx_user_subscriptions_stripe_subscription_id ON user_subscriptions(stripe_subscription_id);
+
+-- Create token_transactions table for auditing
+CREATE TABLE token_transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  amount INTEGER NOT NULL,
+  transaction_type TEXT NOT NULL CHECK (transaction_type IN ('purchase', 'usage', 'refund', 'renewal')),
+  description TEXT,
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- Create index
+CREATE INDEX idx_token_transactions_user_id ON token_transactions(user_id);

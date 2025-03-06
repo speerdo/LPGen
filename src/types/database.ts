@@ -76,3 +76,16 @@ export interface WebsiteStyle {
   dominantColor?: string;
   primaryFont?: string;
 }
+
+export type UserSubscription = {
+  id: string;
+  user_id: string;
+  plan_type: 'free' | 'premium' | 'enterprise';
+  token_balance: number;
+  tokens_used: number;
+  next_reset_date: string;
+  stripe_customer_id?: string;
+  stripe_subscription_id?: string;
+  created_at: string;
+  updated_at: string;
+};
