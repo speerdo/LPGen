@@ -1,49 +1,29 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import Navbar from '../components/Navbar';
-import { getUserSubscription, createCheckoutSession, createPortalSession, PLANS, TOKENS_PER_LANDING_PAGE } from '../services/stripe';
+import { createCheckoutSession, createPortalSession, PLANS, TOKENS_PER_LANDING_PAGE } from '../services/stripe';
 import { stripePromise } from '../services/stripe';
 
-interface UserSubscription {
-  id: string;
-  user_id: string;
-  plan_type: 'free' | 'premium' | 'enterprise';
-  token_balance: number;
-  tokens_used: number;
-  next_reset_date: string;
-  stripe_customer_id?: string;
-  stripe_subscription_id?: string;
-}
-
 function Account() {
-  const { user } = useAuth();
+  const { user, userSubscription } = useAuth();
   const navigate = useNavigate();
-  const [subscription, setSubscription] = useState<UserSubscription | null>(null);
-  const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loadSubscription = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      setLoading(true);
-      const userSubscription = await getUserSubscription(user.id);
-      setSubscription(userSubscription);
-    } catch (error) {
-      console.error('Failed to load subscription:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id]);
-
+  // Just check if user is logged in and use existing subscription from context
   useEffect(() => {
     if (!user) {
       navigate('/login');
       return;
     }
     
-    loadSubscription();
-  }, [user, navigate, loadSubscription]);
+    // No need to refresh, just update loading state when subscription is available
+    if (userSubscription) {
+      console.log("Account page - using subscription from context:", userSubscription);
+      setIsLoading(false);
+    }
+  }, [user, navigate, userSubscription]);
 
   const handleSubscribe = async (priceId: string) => {
     if (!user?.id) return;
@@ -82,11 +62,11 @@ function Account() {
   };
 
   const handleManageSubscription = async () => {
-    if (!subscription?.stripe_customer_id) return;
+    if (!userSubscription?.stripe_customer_id) return;
     
     try {
       setProcessingPayment(true);
-      const portalUrl = await createPortalSession(subscription.stripe_customer_id);
+      const portalUrl = await createPortalSession(userSubscription.stripe_customer_id);
       window.location.href = portalUrl;
     } catch (error) {
       console.error('Failed to open portal:', error);
@@ -97,16 +77,16 @@ function Account() {
   };
 
   const getTokenUsage = () => {
-    if (!subscription) return '0%';
-    const totalMonthlyTokens = subscription.plan_type === 'premium' ? PLANS.PREMIUM.monthlyTokens : PLANS.FREE.monthlyTokens;
-    const used = subscription.tokens_used;
+    if (!userSubscription) return '0%';
+    const totalMonthlyTokens = userSubscription.plan_type === 'premium' ? PLANS.PREMIUM.monthlyTokens : PLANS.FREE.monthlyTokens;
+    const used = userSubscription.tokens_used;
     const percentage = Math.min(100, Math.round((used / totalMonthlyTokens) * 100));
     return `${percentage}%`;
   };
 
   const getLandingPagesRemaining = () => {
-    if (!subscription) return 0;
-    return Math.floor(subscription.token_balance / TOKENS_PER_LANDING_PAGE);
+    if (!userSubscription) return 0;
+    return Math.floor(userSubscription.token_balance / TOKENS_PER_LANDING_PAGE);
   };
 
   return (
@@ -123,7 +103,7 @@ function Account() {
             </p>
           </div>
           
-          {loading ? (
+          {isLoading ? (
             <div className="p-6 text-center">Loading subscription details...</div>
           ) : (
             <div className="px-4 py-5 sm:p-6">
@@ -132,7 +112,7 @@ function Account() {
               <div className="mb-8 p-6 bg-gray-50 rounded-lg">
                 <div className="flex justify-between items-center mb-4">
                   <h4 className="text-lg font-medium">Your Token Balance</h4>
-                  <span className="text-2xl font-bold">{subscription?.token_balance || 0}</span>
+                  <span className="text-2xl font-bold">{userSubscription?.token_balance || 0}</span>
                 </div>
                 
                 <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
@@ -144,12 +124,12 @@ function Account() {
                 
                 <div className="flex justify-between text-sm text-gray-500">
                   <span>0 tokens</span>
-                  <span>{subscription?.plan_type === 'premium' ? PLANS.PREMIUM.monthlyTokens : PLANS.FREE.monthlyTokens} tokens</span>
+                  <span>{userSubscription?.plan_type === 'premium' ? PLANS.PREMIUM.monthlyTokens : PLANS.FREE.monthlyTokens} tokens</span>
                 </div>
                 
                 <div className="mt-4 text-sm">
                   <p>You can create approximately <span className="font-bold">{getLandingPagesRemaining()}</span> more landing pages with your current balance.</p>
-                  <p className="mt-1">Next token reset: <span className="font-medium">{subscription?.next_reset_date ? new Date(subscription.next_reset_date).toLocaleDateString() : 'N/A'}</span></p>
+                  <p className="mt-1">Next token reset: <span className="font-medium">{userSubscription?.next_reset_date ? new Date(userSubscription.next_reset_date).toLocaleDateString() : 'N/A'}</span></p>
                 </div>
               </div>
               
@@ -160,16 +140,16 @@ function Account() {
                   <div className="flex justify-between items-center">
                     <div>
                       <span className="text-lg font-medium">
-                        {subscription?.plan_type === 'premium' ? 'Premium Plan' : 'Free Plan'}
+                        {userSubscription?.plan_type === 'premium' ? 'Premium Plan' : 'Free Plan'}
                       </span>
                       <p className="text-sm text-gray-600 mt-1">
-                        {subscription?.plan_type === 'premium' 
+                        {userSubscription?.plan_type === 'premium' 
                           ? `${PLANS.PREMIUM.monthlyTokens} tokens per month` 
                           : `${PLANS.FREE.monthlyTokens} tokens per month`}
                       </p>
                     </div>
                     
-                    {subscription?.stripe_subscription_id ? (
+                    {userSubscription?.stripe_subscription_id ? (
                       <button
                         onClick={handleManageSubscription}
                         disabled={processingPayment}
@@ -177,7 +157,7 @@ function Account() {
                       >
                         Manage Subscription
                       </button>
-                    ) : subscription?.plan_type !== 'premium' ? (
+                    ) : userSubscription?.plan_type !== 'premium' ? (
                       <button
                         onClick={() => handleSubscribe(PLANS.PREMIUM.stripePriceId)}
                         disabled={processingPayment}

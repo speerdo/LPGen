@@ -1,17 +1,33 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import React, { useState, useEffect } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { Wand2, AlertCircle, Loader2 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 
 function Login() {
-  const navigate = useNavigate();
-  const { signIn, signUp } = useAuth();
+  const { login, signup, user, initializing } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loginSuccess, setLoginSuccess] = useState(false);
+  const navigate = useNavigate();
+
+  // If user is already logged in, redirect to dashboard
+  useEffect(() => {
+    if (user && !initializing) {
+      navigate('/dashboard');
+    }
+  }, [user, initializing, navigate]);
+
+  // Force navigation if login was successful
+  useEffect(() => {
+    if (loginSuccess) {
+      console.log("Login successful, navigating to dashboard");
+      navigate('/dashboard');
+    }
+  }, [loginSuccess, navigate]);
 
   const validateForm = () => {
     if (!email || !password) {
@@ -35,20 +51,36 @@ function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    console.log("Starting login form submission");
 
     if (!validateForm()) {
+      console.log("Form validation failed");
       return;
     }
 
     setIsLoading(true);
     try {
+      console.log("Attempting authentication:", isLogin ? "login" : "signup");
+      
       if (isLogin) {
-        await signIn(email, password);
+        // For login, we just attempt to authenticate with Supabase
+        const result = await login(email, password);
+        if (result.error) {
+          throw result.error;
+        }
+        console.log("Login successful");
+        setLoginSuccess(true);
       } else {
-        await signUp(email, password);
+        // For signup, we just attempt to create the account
+        const result = await signup(email, password);
+        if (result.error) {
+          throw result.error;
+        }
+        console.log("Signup successful");
+        setLoginSuccess(true);
       }
-      navigate('/dashboard');
     } catch (err) {
+      console.error("Authentication error:", err);
       if (err instanceof Error) {
         // Handle specific error messages
         if (err.message.includes('invalid_credentials')) {
@@ -64,9 +96,14 @@ function Login() {
         setError('An unexpected error occurred');
       }
     } finally {
+      console.log("Setting loading state to false");
       setIsLoading(false);
     }
   };
+
+  if (loginSuccess || (user && !initializing)) {
+    return <Navigate to="/dashboard" />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

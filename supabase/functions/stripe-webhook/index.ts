@@ -1,9 +1,29 @@
-import Stripe from 'stripe';
+/**
+ * stripe-webhook
+ * 
+ * This Supabase Edge Function handles Stripe webhook events to manage user subscriptions
+ * and token balances. It processes events such as checkout sessions, invoice payments,
+ * and subscription cancellations. The function updates user subscription data in the
+ * database and records token transactions for audit purposes.
+ * 
+ * Required environment variables:
+ * - STRIPE_SECRET_KEY or VITE_STRIPE_SECRET_KEY: Your Stripe secret key
+ * - STRIPE_WEBHOOK_SECRET or VITE_STRIPE_WEBHOOK_SECRET: Your Stripe webhook signing secret
+ * - SUPABASE_URL or VITE_SUPABASE_URL: Your Supabase project URL
+ * - SUPABASE_SERVICE_ROLE_KEY: Your Supabase service role key (set in Supabase dashboard)
+ * 
+ * Handled webhook events:
+ * - checkout.session.completed: When a user completes a subscription or one-time purchase
+ * - invoice.payment_succeeded: When a recurring subscription payment succeeds
+ * - customer.subscription.deleted: When a subscription is canceled
+ */
+
 import { createClient } from '@supabase/supabase-js';
+import Stripe from 'stripe';
 
 const PLANS = {
   PREMIUM: {
-    stripePriceId: 'price_1234567890',
+    stripePriceId: 'PREMIUM_PLAN_PRICE_ID',
     monthlyTokens: 1000,
   },
   FREE: {
@@ -11,13 +31,38 @@ const PLANS = {
   },
 };
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-02-24.acacia'
-});
+const TOKEN_PACKS = {
+  SMALL: {
+    stripePriceId: 'SMALL_TOKEN_PACK_PRICE_ID',
+    tokens: 100,
+  },
+  LARGE: {
+    stripePriceId: 'LARGE_TOKEN_PACK_PRICE_ID',
+    tokens: 500,
+  }
+};
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+// Check for required environment variables at startup
+// Try both with and without VITE_ prefix
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY || process.env.VITE_STRIPE_SECRET_KEY;
+if (!stripeSecretKey) {
+  console.error("ERROR: STRIPE_SECRET_KEY environment variable is not set");
+}
+
+const stripe = new Stripe(stripeSecretKey || 'dummy_key_for_init');
+
+// Get Supabase URL and service key from environment variables
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+if (!supabaseUrl) {
+  console.error("ERROR: SUPABASE_URL environment variable is not set");
+}
+
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!supabaseServiceKey) {
+  console.error("ERROR: SUPABASE_SERVICE_ROLE_KEY environment variable is not set");
+}
+
+const supabase = createClient(supabaseUrl || '', supabaseServiceKey || '');
 
 // Function to record token transactions for audit purposes
 async function recordTokenTransaction(userId: string, amount: number, type: string, description: string, projectId?: string) {
@@ -31,11 +76,67 @@ async function recordTokenTransaction(userId: string, amount: number, type: stri
 }
 
 export async function handler(req: Request) {
-  const signature = req.headers.get('stripe-signature')!;
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+  // Verify Stripe API key is available
+  if (!stripeSecretKey) {
+    return new Response(
+      JSON.stringify({ error: 'Stripe API key not configured' }),
+      { 
+        status: 500, 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        } 
+      }
+    );
+  }
+  
+  // Handle CORS preflight request
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Max-Age': '86400'
+      }
+    });
+  }
+  
+  // Verify Supabase connection info is available
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return new Response(
+      JSON.stringify({ error: 'Supabase connection information not configured' }),
+      { 
+        status: 500, 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        } 
+      }
+    );
+  }
+  
+  const signature = req.headers.get('stripe-signature');
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.VITE_STRIPE_WEBHOOK_SECRET;
   
   if (!signature || !webhookSecret) {
-    return new Response('Missing signature', { status: 400 });
+    return new Response(
+      JSON.stringify({ error: 'Missing signature or webhook secret' }),
+      { 
+        status: 400, 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        } 
+      }
+    );
   }
 
   try {
@@ -71,7 +172,8 @@ export async function handler(req: Request) {
               .from('user_subscriptions')
               .update({
                 plan_type: priceId === PLANS.PREMIUM.stripePriceId ? 'premium' : 'free',
-                token_balance: existingSubscription.token_balance + monthlyTokens,
+                token_balance: monthlyTokens, // Set to monthly tokens (no accumulation)
+                tokens_used: 0, // Reset usage counter
                 next_reset_date: next_reset_date.toISOString(),
                 stripe_customer_id: customerId,
                 stripe_subscription_id: subscription.id,
@@ -84,7 +186,7 @@ export async function handler(req: Request) {
               userId, 
               monthlyTokens, 
               'renewal', 
-              `${monthlyTokens} tokens added from ${priceId === PLANS.PREMIUM.stripePriceId ? 'premium' : 'free'} plan subscription`
+              `${monthlyTokens} tokens set from ${priceId === PLANS.PREMIUM.stripePriceId ? 'premium' : 'free'} plan subscription`
             );
           } else {
             await supabase
@@ -115,10 +217,10 @@ export async function handler(req: Request) {
           const priceId = lineItems.data[0].price?.id;
           
           let tokenAmount = 0;
-          if (priceId === 'price_small_token_pack') {
-            tokenAmount = 100;
-          } else if (priceId === 'price_large_token_pack') {
-            tokenAmount = 500;
+          if (priceId === TOKEN_PACKS.SMALL.stripePriceId) {
+            tokenAmount = TOKEN_PACKS.SMALL.tokens;
+          } else if (priceId === TOKEN_PACKS.LARGE.stripePriceId) {
+            tokenAmount = TOKEN_PACKS.LARGE.tokens;
           }
           
           // Update token balance
@@ -195,7 +297,7 @@ export async function handler(req: Request) {
           await supabase
             .from('user_subscriptions')
             .update({
-              token_balance: monthlyTokens,
+              token_balance: monthlyTokens, // Always set to monthly allowance (no rollovers)
               tokens_used: 0, // Reset tokens used
               next_reset_date: next_reset_date.toISOString(),
               updated_at: new Date().toISOString(),
@@ -244,13 +346,30 @@ export async function handler(req: Request) {
       }
     }
 
-    return new Response(JSON.stringify({ received: true }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ success: true }),
+      { 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        } 
+      }
+    );
   } catch (error) {
+    console.error('Webhook error:', error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'An unknown error occurred' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
+      { 
+        status: 400, 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        } 
+      }
     );
   }
 } 

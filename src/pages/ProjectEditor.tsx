@@ -1,7 +1,7 @@
 import * as monaco from 'monaco-editor';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import Editor from '@monaco-editor/react';
 import {
   Save,

@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 
 function Signup() {
-  const { signUp } = useAuth();
+  const { signup } = useAuth();
 
   useEffect(() => {
-    signUp('', '');
-  }, [signUp]);
+    signup('', '');
+  }, [signup]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
