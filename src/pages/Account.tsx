@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Navbar from '../components/Navbar';
-import { createCheckoutSession, createPortalSession, PLANS, TOKENS_PER_LANDING_PAGE } from '../services/stripe';
-import { stripePromise } from '../services/stripe';
+import { createPortalSession, PLANS, TOKENS_PER_LANDING_PAGE } from '../services/stripe';
 
 function Account() {
   const { user, userSubscription } = useAuth();
@@ -25,40 +24,16 @@ function Account() {
     }
   }, [user, navigate, userSubscription]);
 
-  const handleSubscribe = async (priceId: string) => {
-    if (!user?.id) return;
-    
-    try {
-      setProcessingPayment(true);
-      const sessionId = await createCheckoutSession(priceId, user.id, true);
-      const stripe = await stripePromise;
-      if (stripe) {
-        await stripe.redirectToCheckout({ sessionId });
-      }
-    } catch (error) {
-      console.error('Payment error:', error);
-      alert('Payment failed. Please try again.');
-    } finally {
-      setProcessingPayment(false);
-    }
+  const handleSubscribe = () => {
+    navigate(`/checkout?item=premium`);
   };
 
-  const handleOneTimePayment = async (priceId: string) => {
-    if (!user?.id) return;
+  const handleOneTimePayment = (priceId: string) => {
+    const packType = priceId === PLANS.TOKEN_PACK_SMALL.stripePriceId 
+      ? 'small-token-pack' 
+      : 'large-token-pack';
     
-    try {
-      setProcessingPayment(true);
-      const sessionId = await createCheckoutSession(priceId, user.id, false);
-      const stripe = await stripePromise;
-      if (stripe) {
-        await stripe.redirectToCheckout({ sessionId });
-      }
-    } catch (error) {
-      console.error('Payment error:', error);
-      alert('Payment failed. Please try again.');
-    } finally {
-      setProcessingPayment(false);
-    }
+    navigate(`/checkout?item=${packType}`);
   };
 
   const handleManageSubscription = async () => {
@@ -159,7 +134,7 @@ function Account() {
                       </button>
                     ) : userSubscription?.plan_type !== 'premium' ? (
                       <button
-                        onClick={() => handleSubscribe(PLANS.PREMIUM.stripePriceId)}
+                        onClick={() => handleSubscribe()}
                         disabled={processingPayment}
                         className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
                       >

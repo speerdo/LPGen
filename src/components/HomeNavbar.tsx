@@ -1,13 +1,11 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Wand2, Grid } from 'lucide-react';
+import { Wand2 } from 'lucide-react';
 import TokenDisplay from './Dashboard/TokenDisplay';
 
-function Navbar() {
+function HomeNavbar() {
   const { user, logout } = useAuth();
-  const location = useLocation();
-  const isHomePage = location.pathname === '/';
 
   return (
     <nav className="bg-white shadow-sm">
@@ -27,12 +25,6 @@ function Navbar() {
                 <TokenDisplay compact={true} />
                 <div className="ml-3 relative">
                   <div className="flex items-center">
-                    {!isHomePage && (
-                      <Link to="/dashboard" className="flex items-center text-gray-500 hover:text-gray-700 mx-4">
-                        <Grid className="h-4 w-4 mr-1" />
-                        Dashboard
-                      </Link>
-                    )}
                     <Link to="/account" className="text-gray-500 hover:text-gray-700 mx-4">
                       Account
                     </Link>
@@ -68,4 +60,4 @@ function Navbar() {
   );
 }
 
-export default Navbar;
+export default HomeNavbar; 

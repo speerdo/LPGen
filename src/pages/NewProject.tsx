@@ -17,6 +17,7 @@ import { uploadLogo } from '../lib/storage/uploadLogo';
 import ScrapingProgressModal from '../components/ScrapingProgressModal';
 import AIGenerationProgressModal from '../components/AIGenerationProgressModal';
 import type { Project, ProjectSettings, WebsiteStyle } from '../types/database';
+import { deductTokens, TOKEN_COSTS } from '../services/stripe';
 
 type Step = 'url' | 'settings';
 
@@ -100,6 +101,34 @@ function NewProject() {
         throw new Error('Please click the "Connect to Supabase" button in the top right to set up your environment variables.');
       }
 
+      // Deduct tokens for the scraping phase (30% of total cost)
+      if (!user) {
+        setError('You must be logged in to continue');
+        return;
+      }
+      
+      try {
+        const scrapingTokenCost = Math.floor(TOKEN_COSTS.INITIAL_LANDING_PAGE * 0.3);
+        await deductTokens(
+          user.id, 
+          scrapingTokenCost,
+          'Website scraping and asset extraction'
+        );
+        console.log(`Deducted ${scrapingTokenCost} tokens for scraping phase`);
+      } catch (err) {
+        console.error('Error deducting tokens for scraping:', err);
+        if (err instanceof Error && err.message === 'Insufficient tokens') {
+          setError('You do not have enough tokens. Please upgrade your plan or purchase more tokens.');
+          setIsLoading(false);
+          setIsScraping(false);
+          return;
+        }
+        setError('Failed to check token balance');
+        setIsLoading(false);
+        setIsScraping(false);
+        return;
+      }
+
       // Create the project first
       const project = await createProject({
         user_id: user!.id,
@@ -158,6 +187,31 @@ function NewProject() {
 
     if (!currentProject) {
       setError('Project not initialized');
+      return;
+    }
+    
+    // Check if user is logged in and deduct tokens for generation phase
+    if (!user) {
+      setError('You must be logged in to continue');
+      return;
+    }
+    
+    // Deduct tokens for content generation phase (70% of total cost)
+    try {
+      const generationTokenCost = Math.ceil(TOKEN_COSTS.INITIAL_LANDING_PAGE * 0.7);
+      await deductTokens(
+        user.id, 
+        generationTokenCost,
+        'Landing page AI generation'
+      );
+      console.log(`Deducted ${generationTokenCost} tokens for generation phase`);
+    } catch (err) {
+      console.error('Error deducting tokens for generation:', err);
+      if (err instanceof Error && err.message === 'Insufficient tokens') {
+        setError('You do not have enough tokens. Please upgrade your plan or purchase more tokens.');
+        return;
+      }
+      setError('Failed to check token balance');
       return;
     }
 

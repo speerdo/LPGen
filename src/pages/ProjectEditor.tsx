@@ -19,7 +19,7 @@ import Navbar from '../components/Navbar';
 import { getProjectVersions, createVersion, getProject } from '../lib/supabase';
 import { generateLandingPageEdit } from '../lib/ai/editor';
 import type { Version, Project } from '../types/database';
-import { deductTokens, TOKENS_PER_LANDING_PAGE } from '../services/stripe';
+import { deductTokens, TOKEN_COSTS } from '../services/stripe';
 
 function ProjectEditor() {
   const { projectId } = useParams();
@@ -112,6 +112,34 @@ function ProjectEditor() {
       return;
     }
 
+    // Determine token cost based on the operation
+    let tokenCost;
+    let operationDescription;
+    
+    if (editorContent.trim().length === 0) {
+      // Initial generation (should be rare since we typically come from NewProject)
+      tokenCost = TOKEN_COSTS.INITIAL_LANDING_PAGE;
+      operationDescription = 'Initial landing page generation';
+    } else if (aiPrompt.toLowerCase().includes('edit') || 
+               aiPrompt.toLowerCase().includes('change') || 
+               aiPrompt.toLowerCase().includes('update')) {
+      // Content updates are cheaper
+      tokenCost = TOKEN_COSTS.CONTENT_UPDATE;
+      operationDescription = 'Content update: ' + aiPrompt.substring(0, 50) + (aiPrompt.length > 50 ? '...' : '');
+    } else if (aiPrompt.toLowerCase().includes('section') || 
+               aiPrompt.toLowerCase().includes('add') || 
+               aiPrompt.toLowerCase().includes('create')) {
+      // Section generation costs more than simple edits
+      tokenCost = TOKEN_COSTS.SECTION_GENERATION;
+      operationDescription = 'Section generation: ' + aiPrompt.substring(0, 50) + (aiPrompt.length > 50 ? '...' : '');
+    } else {
+      // Default to refinement for any other type of prompt
+      tokenCost = TOKEN_COSTS.LANDING_PAGE_REFINEMENT;
+      operationDescription = 'Landing page refinement: ' + aiPrompt.substring(0, 50) + (aiPrompt.length > 50 ? '...' : '');
+    }
+    
+    console.log(`AI operation: ${operationDescription}, token cost: ${tokenCost}`);
+    
     // Check and deduct tokens before generating
     try {
       if (!user) {
@@ -119,7 +147,11 @@ function ProjectEditor() {
         return;
       }
       
-      await deductTokens(user.id, TOKENS_PER_LANDING_PAGE);
+      await deductTokens(
+        user.id, 
+        tokenCost,
+        operationDescription
+      );
     } catch (error) {
       if (error instanceof Error && error.message === 'Insufficient tokens') {
         setError('You do not have enough tokens. Please upgrade your plan or purchase more tokens.');

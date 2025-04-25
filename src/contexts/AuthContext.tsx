@@ -64,11 +64,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Always try to get a subscription from the database first
       console.log('Fetching user subscription for:', userId);
       
+      // Use maybeSingle() to prevent 406 errors when no row is found
       const { data, error } = await supabase
         .from('user_subscriptions')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.log('Error fetching subscription:', error.message);
@@ -154,13 +155,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // After creating the fallback subscription
       try {
         // Try to insert the fallback subscription into the database
+        // Note: This may fail if another process already created it
         const { error } = await supabase
           .from('user_subscriptions')
           .insert([fallbackSub])
-          .single();
+          .select()
+          .maybeSingle();
         
         if (error) {
           console.error('Failed to persist fallback subscription:', error);
+          // Check if the error is due to a unique violation (subscription already exists)
+          if (error.message?.includes('duplicate key value') || error.message?.includes('unique constraint')) {
+            console.log('Fallback subscription not persisted - likely already exists');
+          }
         } else {
           console.log('Fallback subscription persisted to database');
         }

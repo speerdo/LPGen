@@ -1,11 +1,11 @@
 import { Link } from 'react-router-dom';
 import { Wand2, Upload, Download, Repeat, Layout } from 'lucide-react';
-import Navbar from '../components/Navbar';
+import HomeNavbar from '../components/HomeNavbar';
 
 function HomePage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
-      <Navbar />
+      <HomeNavbar />
       
       {/* Hero Section */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
