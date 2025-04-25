@@ -17,7 +17,7 @@ import { uploadLogo } from '../lib/storage/uploadLogo';
 import ScrapingProgressModal from '../components/ScrapingProgressModal';
 import AIGenerationProgressModal from '../components/AIGenerationProgressModal';
 import type { Project, ProjectSettings, WebsiteStyle } from '../types/database';
-import { deductTokens, TOKEN_COSTS } from '../services/tokens';
+import { deductTokens } from '../services/tokens';
 
 type Step = 'url' | 'settings';
 
@@ -128,9 +128,7 @@ function NewProject() {
       }
 
       try {
-        const scrapingTokenCost = Math.floor(
-          TOKEN_COSTS.INITIAL_LANDING_PAGE * 0.3
-        );
+        const scrapingTokenCost = 40; // Fixed cost for scraping
         await deductTokens(
           user.id,
           scrapingTokenCost,
@@ -227,11 +225,9 @@ function NewProject() {
       return;
     }
 
-    // Deduct tokens for content generation phase (70% of total cost)
+    // Deduct tokens for content generation phase (OpenAI generation)
     try {
-      const generationTokenCost = Math.ceil(
-        TOKEN_COSTS.INITIAL_LANDING_PAGE * 0.7
-      );
+      const generationTokenCost = 30; // Fixed cost for AI generation
       await deductTokens(
         user.id,
         generationTokenCost,
