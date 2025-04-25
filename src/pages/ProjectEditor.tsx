@@ -19,7 +19,7 @@ import Navbar from '../components/Navbar';
 import { getProjectVersions, createVersion, getProject } from '../lib/supabase';
 import { generateLandingPageEdit } from '../lib/ai/editor';
 import type { Version, Project } from '../types/database';
-import { deductTokens, TOKEN_COSTS } from '../services/stripe';
+import { deductTokens, TOKEN_COSTS } from '../services/tokens';
 
 function ProjectEditor() {
   const { projectId } = useParams();
@@ -33,10 +33,13 @@ function ProjectEditor() {
   const [error, setError] = useState<string | null>(null);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [editorContent, setEditorContent] = useState('');
-  const [viewMode, setViewMode] = useState<'code' | 'preview' | 'split'>('preview');
+  const [viewMode, setViewMode] = useState<'code' | 'preview' | 'split'>(
+    'preview'
+  );
   const [aiPrompt, setAiPrompt] = useState('');
   const [showAiPrompt, setShowAiPrompt] = useState(true);
-  const [monacoInstance, setMonacoInstance] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const [monacoInstance, setMonacoInstance] =
+    useState<monaco.editor.IStandaloneCodeEditor | null>(null);
   const [projectData, setProjectData] = useState<Project | null>(null);
 
   const loadVersions = useCallback(async () => {
@@ -45,7 +48,7 @@ function ProjectEditor() {
     try {
       const data = await getProjectVersions(projectId);
       setVersions(data);
-      const currentVer = data.find(v => v.is_current) || data[0];
+      const currentVer = data.find((v) => v.is_current) || data[0];
       setCurrentVersion(currentVer);
       if (currentVer) {
         setEditorContent(currentVer.html_content || '');
@@ -84,7 +87,10 @@ function ProjectEditor() {
         created_by: user.id,
         is_current: true,
       });
-      setVersions([newVersion, ...versions.map(v => ({ ...v, is_current: false }))]);
+      setVersions([
+        newVersion,
+        ...versions.map((v) => ({ ...v, is_current: false })),
+      ]);
       setCurrentVersion(newVersion);
     } catch (err) {
       console.error('Error saving version:', err);
@@ -115,46 +121,59 @@ function ProjectEditor() {
     // Determine token cost based on the operation
     let tokenCost;
     let operationDescription;
-    
+
     if (editorContent.trim().length === 0) {
       // Initial generation (should be rare since we typically come from NewProject)
       tokenCost = TOKEN_COSTS.INITIAL_LANDING_PAGE;
       operationDescription = 'Initial landing page generation';
-    } else if (aiPrompt.toLowerCase().includes('edit') || 
-               aiPrompt.toLowerCase().includes('change') || 
-               aiPrompt.toLowerCase().includes('update')) {
+    } else if (
+      aiPrompt.toLowerCase().includes('edit') ||
+      aiPrompt.toLowerCase().includes('change') ||
+      aiPrompt.toLowerCase().includes('update')
+    ) {
       // Content updates are cheaper
       tokenCost = TOKEN_COSTS.CONTENT_UPDATE;
-      operationDescription = 'Content update: ' + aiPrompt.substring(0, 50) + (aiPrompt.length > 50 ? '...' : '');
-    } else if (aiPrompt.toLowerCase().includes('section') || 
-               aiPrompt.toLowerCase().includes('add') || 
-               aiPrompt.toLowerCase().includes('create')) {
+      operationDescription =
+        'Content update: ' +
+        aiPrompt.substring(0, 50) +
+        (aiPrompt.length > 50 ? '...' : '');
+    } else if (
+      aiPrompt.toLowerCase().includes('section') ||
+      aiPrompt.toLowerCase().includes('add') ||
+      aiPrompt.toLowerCase().includes('create')
+    ) {
       // Section generation costs more than simple edits
       tokenCost = TOKEN_COSTS.SECTION_GENERATION;
-      operationDescription = 'Section generation: ' + aiPrompt.substring(0, 50) + (aiPrompt.length > 50 ? '...' : '');
+      operationDescription =
+        'Section generation: ' +
+        aiPrompt.substring(0, 50) +
+        (aiPrompt.length > 50 ? '...' : '');
     } else {
       // Default to refinement for any other type of prompt
       tokenCost = TOKEN_COSTS.LANDING_PAGE_REFINEMENT;
-      operationDescription = 'Landing page refinement: ' + aiPrompt.substring(0, 50) + (aiPrompt.length > 50 ? '...' : '');
+      operationDescription =
+        'Landing page refinement: ' +
+        aiPrompt.substring(0, 50) +
+        (aiPrompt.length > 50 ? '...' : '');
     }
-    
-    console.log(`AI operation: ${operationDescription}, token cost: ${tokenCost}`);
-    
+
+    console.log(
+      `AI operation: ${operationDescription}, token cost: ${tokenCost}`
+    );
+
     // Check and deduct tokens before generating
     try {
       if (!user) {
         setError('You must be logged in to generate content');
         return;
       }
-      
-      await deductTokens(
-        user.id, 
-        tokenCost,
-        operationDescription
-      );
+
+      await deductTokens(user.id, tokenCost, operationDescription);
     } catch (error) {
       if (error instanceof Error && error.message === 'Insufficient tokens') {
-        setError('You do not have enough tokens. Please upgrade your plan or purchase more tokens.');
+        setError(
+          'You do not have enough tokens. Please upgrade your plan or purchase more tokens.'
+        );
         return;
       }
       console.error('Error checking tokens:', error);
@@ -168,7 +187,11 @@ function ProjectEditor() {
     try {
       // Use screenshot from current version (if available)
       const screenshotUrl = currentVersion?.settings?.screenshot || '';
-      const result = await generateLandingPageEdit(editorContent, aiPrompt, screenshotUrl);
+      const result = await generateLandingPageEdit(
+        editorContent,
+        aiPrompt,
+        screenshotUrl
+      );
       if (result.error) {
         setError(result.error);
       } else {
@@ -180,12 +203,15 @@ function ProjectEditor() {
           created_by: user.id,
           is_current: true,
         });
-        
+
         setEditorContent(result.html);
         setCurrentVersion(newVersion);
         // Update the versions list: mark all previous versions as not current
-        setVersions([newVersion, ...versions.map(v => ({ ...v, is_current: false }))]);
-        
+        setVersions([
+          newVersion,
+          ...versions.map((v) => ({ ...v, is_current: false })),
+        ]);
+
         setShowAiPrompt(false);
         setAiPrompt('');
       }
@@ -210,34 +236,34 @@ function ProjectEditor() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className='min-h-screen bg-gray-50'>
         <Navbar />
-        <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
-          <RefreshCw className="h-8 w-8 text-gray-400 animate-spin" />
+        <div className='flex items-center justify-center h-[calc(100vh-4rem)]'>
+          <RefreshCw className='h-8 w-8 text-gray-400 animate-spin' />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className='min-h-screen bg-gray-50'>
       <Navbar />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className='max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'>
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center">
+        <div className='flex items-center justify-between mb-8'>
+          <div className='flex items-center'>
             <button
               onClick={() => navigate('/dashboard')}
-              className="mr-4 text-gray-500 hover:text-gray-700"
+              className='mr-4 text-gray-500 hover:text-gray-700'
             >
-              <ArrowLeft className="h-5 w-5" />
+              <ArrowLeft className='h-5 w-5' />
             </button>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className='text-2xl font-bold text-gray-900'>
               {projectData?.name || currentVersion?.project_id}
             </h1>
           </div>
-          <div className="flex items-center space-x-4">
-            <div className="flex rounded-md shadow-sm" role="group">
+          <div className='flex items-center space-x-4'>
+            <div className='flex rounded-md shadow-sm' role='group'>
               <button
                 onClick={() => setViewMode('code')}
                 className={`px-4 py-2 text-sm font-medium rounded-l-lg border ${
@@ -245,9 +271,9 @@ function ProjectEditor() {
                     ? 'bg-indigo-600 text-white border-indigo-600'
                     : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                 }`}
-                title="Code View"
+                title='Code View'
               >
-                <Code2 className="h-4 w-4" />
+                <Code2 className='h-4 w-4' />
               </button>
               <button
                 onClick={() => setViewMode('split')}
@@ -256,9 +282,9 @@ function ProjectEditor() {
                     ? 'bg-indigo-600 text-white border-indigo-600'
                     : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                 }`}
-                title="Split View"
+                title='Split View'
               >
-                <Split className="h-4 w-4" />
+                <Split className='h-4 w-4' />
               </button>
               <button
                 onClick={() => setViewMode('preview')}
@@ -267,9 +293,9 @@ function ProjectEditor() {
                     ? 'bg-indigo-600 text-white border-indigo-600'
                     : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                 }`}
-                title="Preview"
+                title='Preview'
               >
-                <Eye className="h-4 w-4" />
+                <Eye className='h-4 w-4' />
               </button>
             </div>
             <button
@@ -280,7 +306,7 @@ function ProjectEditor() {
                   : 'bg-white text-gray-700 border border-gray-300'
               }`}
             >
-              <History className="h-4 w-4" />
+              <History className='h-4 w-4' />
             </button>
             <button
               onClick={() => setShowAiPrompt(!showAiPrompt)}
@@ -290,17 +316,17 @@ function ProjectEditor() {
                   : 'bg-white text-gray-700 border border-gray-300'
               }`}
             >
-              <Wand2 className="h-4 w-4" />
+              <Wand2 className='h-4 w-4' />
             </button>
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+              className='inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50'
             >
               {isSaving ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className='h-4 w-4 mr-2 animate-spin' />
               ) : (
-                <Save className="h-4 w-4 mr-2" />
+                <Save className='h-4 w-4 mr-2' />
               )}
               Save Version
             </button>
@@ -309,11 +335,11 @@ function ProjectEditor() {
 
         {/* Error Message */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 rounded-md">
-            <div className="flex">
-              <AlertCircle className="h-5 w-5 text-red-400" />
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">{error}</h3>
+          <div className='mb-6 p-4 bg-red-50 rounded-md'>
+            <div className='flex'>
+              <AlertCircle className='h-5 w-5 text-red-400' />
+              <div className='ml-3'>
+                <h3 className='text-sm font-medium text-red-800'>{error}</h3>
               </div>
             </div>
           </div>
@@ -321,33 +347,33 @@ function ProjectEditor() {
 
         {/* AI Prompt */}
         {showAiPrompt && (
-          <div className="mb-6 bg-white rounded-lg shadow-sm p-4">
-            <div className="flex items-start space-x-4">
-              <div className="flex-1">
+          <div className='mb-6 bg-white rounded-lg shadow-sm p-4'>
+            <div className='flex items-start space-x-4'>
+              <div className='flex-1'>
                 <label
-                  htmlFor="ai-prompt"
-                  className="block text-sm font-medium text-gray-700 mb-2"
+                  htmlFor='ai-prompt'
+                  className='block text-sm font-medium text-gray-700 mb-2'
                 >
                   Update the landing page
                 </label>
                 <textarea
-                  id="ai-prompt"
+                  id='ai-prompt'
                   rows={3}
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder="E.g., Change the background color to blue and add a new section for testimonials"
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2"
+                  placeholder='E.g., Change the background color to blue and add a new section for testimonials'
+                  className='w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2'
                 />
               </div>
               <button
                 onClick={handleGenerateContent}
                 disabled={isGenerating}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 mt-6"
+                className='inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 mt-6'
               >
                 {isGenerating ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Loader2 className='h-4 w-4 mr-2 animate-spin' />
                 ) : (
-                  <Wand2 className="h-4 w-4 mr-2" />
+                  <Wand2 className='h-4 w-4 mr-2' />
                 )}
                 Generate
               </button>
@@ -356,19 +382,23 @@ function ProjectEditor() {
         )}
 
         {/* Main Content */}
-        <div className="flex gap-6">
+        <div className='flex gap-6'>
           {/* Editor/Preview */}
-          <div className="flex-1">
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-              <div className={`h-[calc(100vh-16rem)] min-h-[calc(100vh-16rem)] ${viewMode === 'split' ? 'grid grid-cols-2 gap-2' : ''}`}>
+          <div className='flex-1'>
+            <div className='bg-white rounded-lg shadow-sm overflow-hidden'>
+              <div
+                className={`h-[calc(100vh-16rem)] min-h-[calc(100vh-16rem)] ${
+                  viewMode === 'split' ? 'grid grid-cols-2 gap-2' : ''
+                }`}
+              >
                 {(viewMode === 'code' || viewMode === 'split') && (
                   <div className={viewMode === 'split' ? 'border-r' : ''}>
                     <Editor
-                      height="100vh"
-                      defaultLanguage="html"
+                      height='100vh'
+                      defaultLanguage='html'
                       value={editorContent}
                       onChange={handleEditorChange}
-                      theme="vs-light"
+                      theme='vs-light'
                       onMount={(editor) => {
                         setMonacoInstance(editor);
                       }}
@@ -383,12 +413,12 @@ function ProjectEditor() {
                   </div>
                 )}
                 {(viewMode === 'preview' || viewMode === 'split') && (
-                  <div className="h-full overflow-auto bg-white">
+                  <div className='h-full overflow-auto bg-white'>
                     <iframe
                       srcDoc={editorContent}
-                      title="Preview"
-                      className="w-full h-full border-0"
-                      sandbox="allow-scripts"
+                      title='Preview'
+                      className='w-full h-full border-0'
+                      sandbox='allow-scripts'
                     />
                   </div>
                 )}
@@ -398,12 +428,12 @@ function ProjectEditor() {
 
           {/* Version History Sidebar */}
           {showVersionHistory && (
-            <div className="w-80">
-              <div className="bg-white rounded-lg shadow-sm p-4">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">
+            <div className='w-80'>
+              <div className='bg-white rounded-lg shadow-sm p-4'>
+                <h3 className='text-lg font-medium text-gray-900 mb-4'>
                   Version History
                 </h3>
-                <div className="space-y-4">
+                <div className='space-y-4'>
                   {versions.map((version) => (
                     <button
                       key={version.id}
@@ -414,17 +444,17 @@ function ProjectEditor() {
                           : 'hover:bg-gray-50'
                       }`}
                     >
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-gray-900">
+                      <div className='flex justify-between items-center'>
+                        <span className='text-sm font-medium text-gray-900'>
                           Version {version.version_number}
                         </span>
                         {version.is_current && (
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                          <span className='text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full'>
                             Current
                           </span>
                         )}
                       </div>
-                      <span className="text-xs text-gray-500">
+                      <span className='text-xs text-gray-500'>
                         {new Date(version.created_at).toLocaleString()}
                       </span>
                     </button>
