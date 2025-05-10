@@ -1,0 +1,10 @@
+{
+  "name": "reset-monthly-tokens",
+  "version": "1.0.0",
+  "description": "Monthly token reset for LP Gen users",
+  "main": "index.ts",
+  "private": true,
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.7"
+  }
+} 

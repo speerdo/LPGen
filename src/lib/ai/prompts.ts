@@ -9,43 +9,59 @@ export function createSystemPrompt(): string {
 
 export function createStyleGuide(style?: WebsiteStyle): string {
   if (!style) return '';
-  
+
   return `
 Style Guide:
-${style.fonts?.length ? `Typography (use exactly):
-${style.fonts.map(font => `- ${font}`).join('\n')}` : 'Use system fonts'}
+${
+  style.fonts?.length
+    ? `Typography (use exactly):
+${style.fonts.map((font) => `- ${font}`).join('\n')}`
+    : 'Use system fonts'
+}
 
 ${style.logo ? `Brand Logo: ${style.logo}` : ''}
 
-${style.images?.length ? `Visual Assets:
-${style.images.map(img => `- ${img}`).join('\n')}` : ''}`;
+${
+  style.images?.length
+    ? `Visual Assets:
+${style.images.map((img) => `- ${img}`).join('\n')}`
+    : ''
+}`;
 }
 
-export function createFullPrompt(prompt: string, style?: WebsiteStyle, screenshot?: string, palette?: number[][]): string {
-  const screenshotReference = screenshot ? `
+export function createFullPrompt(
+  prompt: string,
+  style?: WebsiteStyle,
+  screenshot?: string,
+  palette?: number[][]
+): string {
+  const screenshotReference = screenshot
+    ? `
  Screenshot Reference (HIGHEST PRIORITY):
  Please carefully review the attached screenshot for its layout, colors, buttons, and border radius.
  Screenshot URL: ${screenshot}
- ` : '';
+ `
+    : '';
 
- let paletteInstructions = '';
- if (palette && palette.length > 0) {
-   paletteInstructions = `
+  let paletteInstructions = '';
+  if (palette && palette.length > 0) {
+    paletteInstructions = `
  Color Palette:
- ${palette.map(color => `- rgb(${color.join(', ')})`).join('\n')}
+ ${palette.map((color) => `- rgb(${color.join(', ')})`).join('\n')}
  `;
- } else if (style?.colors && style.colors.length > 0) {
-   paletteInstructions = `
+  } else if (style?.colors && style.colors.length > 0) {
+    paletteInstructions = `
  Color Palette:
  ${style.colors.map((color: string) => `- ${color}`).join('\n')}
  `;
- }
- 
+  }
 
   const styleGuide = createStyleGuide(style);
-  const supplementaryStyle = styleGuide ? `
+  const supplementaryStyle = styleGuide
+    ? `
  Optional Supplementary Style Guide:
- ${styleGuide}` : '';
+ ${styleGuide}`
+    : '';
 
   let userDesignCriteria = '';
   if (style && (style.dominantColor || style.primaryFont)) {
@@ -73,13 +89,14 @@ export function createFullPrompt(prompt: string, style?: WebsiteStyle, screensho
           3. Ensure accessibility compliance.
           4. Ensure there are 4 defined sections outside of the header navigation bar: hero, content, content-2, footer.
           5. Section background colors, widths, max-width, and margins should match the screenshot.
-          6. Hero section should include an image provided in Visual Assets.
-          7. Use Lorem Ipsum for all text content unless otherwise specified, at least 2 paragraphs.
-          8. Do not include any navigation or extraneous links in the header except the logo.
-          9. Button styles and colors should match the screenshot.
-          10. Place the logo in the top left corner of the page unless otherwise specified or if the screenshot shows a different location.
-          11. Use Google fonts in the head element for any provided fonts that require it.
-          12. Update any years to the current year (${new Date().getFullYear()}).
+          6. Sections should have margins for left and right as well as top and bottom for even spacing.
+          7. Hero section should include an image provided in Visual Assets.
+          8. Use Lorem Ipsum for all text content unless otherwise specified, at least 2 paragraphs.
+          9. Do not include any navigation or extraneous links in the header except the logo.
+          10. Button styles and colors should match the screenshot.
+          11. Place the logo in the top left corner of the page unless otherwise specified or if the screenshot shows a different location.
+          12. Use Google fonts in the head element for any provided fonts that require it.
+          13. Update any years to the current year (${new Date().getFullYear()}).
 
           
           Additional Content Requirements:

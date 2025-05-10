@@ -9,7 +9,8 @@ const RETRY_DELAY = 2000; // 2 seconds
 export async function makeScrapingBeeRequest(
   url: string,
   withJs: boolean = true,
-  retryCount: number = 0
+  retryCount: number = 0,
+  projectId: string = 'default-project-id'
 ): Promise<ScrapingResult> {
   console.log('[ScrapingBee] Starting request:', { url, withJs, retryCount });
   
@@ -57,7 +58,7 @@ export async function makeScrapingBeeRequest(
       if (htmlResponse.status === 500 && retryCount < MAX_RETRIES) {
         console.log(`[ScrapingBee] Server error, retrying (${retryCount + 1}/${MAX_RETRIES})...`);
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (retryCount + 1)));
-        return makeScrapingBeeRequest(url, withJs, retryCount + 1);
+        return makeScrapingBeeRequest(url, withJs, retryCount + 1, projectId);
       }
 
       throw new Error(`Failed to scrape website: ${errorText}`);
@@ -68,23 +69,37 @@ export async function makeScrapingBeeRequest(
 
     // Second request to get screenshot
     console.log('[ScrapingBee] Making screenshot request...');
+    
     const screenshotParams = new URLSearchParams({
-      ...Object.fromEntries(params),
+      'api_key': apiKey,
+      'url': cleanUrl,
       'screenshot': 'true',
       'window_width': '1920',
       'window_height': '1080',
       'screenshot_full_page': 'true',
+      'premium_proxy': 'true',
+      'block_ads': 'true',
+      'country_code': 'us',
+      'render_js': 'true',
       'wait': '5000',
-      'wait_browser': 'load',
-      'js_scenario': JSON.stringify({
-         "instructions": [
-           { "wait": 3000 },
-           { "wait_for_and_click": "//*[contains(text(), 'Accept')]" },
-           { "wait": 2000 }
-         ]
-      })
+      'wait_for': '.header, header, #header, nav, .navbar, .logo, h1, .hero, .main',
+      'wait_browser': 'networkidle0'
     });
 
+    console.log('[ScrapingBee] Screenshot params:', {
+      url: cleanUrl,
+      screenshot: 'true',
+      window_width: '1920',
+      window_height: '1080',
+      screenshot_full_page: 'true',
+      premium_proxy: 'true',
+      block_ads: 'true',
+      country_code: 'us',
+      render_js: 'true',
+      wait: '5000',
+      wait_for: '.header, header, #header, nav, .navbar, .logo, h1, .hero, .main',
+      wait_browser: 'networkidle0'
+    });
     const screenshotResponse = await fetch(`${baseUrl}?${screenshotParams.toString()}`);
     
     if (screenshotResponse.ok) {
@@ -95,38 +110,106 @@ export async function makeScrapingBeeRequest(
           console.error('[ScrapingBee] Screenshot is invalid (blank or corrupted image detected)');
           // Fallback attempt: wait longer to let page load and then re-request the screenshot.
           const fallbackScreenshotParams = new URLSearchParams({
-              ...Object.fromEntries(params),
-              'screenshot': 'true',
-              'window_width': '1920',
-              'window_height': '1080',
-              'screenshot_full_page': 'true',
-              'wait': '10000',
-              'wait_browser': 'load'
+            'api_key': apiKey,
+            'url': cleanUrl,
+            'screenshot': 'true',
+            'window_width': '1920',
+            'window_height': '1080',
+            'screenshot_full_page': 'true',
+            'premium_proxy': 'true',
+            'block_ads': 'true',
+            'wait': '10000',
+            'wait_browser': 'load',
+            'js_scenario': JSON.stringify({
+              "instructions": [
+                { "wait": 5000 },
+                { "scroll_y": 100 },
+                { "wait": 1000 },
+                { "scroll_y": 200 },
+                { "wait": 1000 },
+                { "scroll_y": 0 },
+                { "wait": 2000 }
+              ]
+            })
           });
-          console.log('[ScrapingBee] Retrying screenshot with longer wait...');
+          console.log('[ScrapingBee] Retry params:', {
+            url: cleanUrl,
+            screenshot: 'true',
+            window_width: '1920',
+            window_height: '1080',
+            screenshot_full_page: 'true',
+            premium_proxy: 'true',
+            block_ads: 'true',
+            wait: '10000',
+            wait_browser: 'load',
+          });
+          console.log('[ScrapingBee] Retrying screenshot with longer wait and scrolling...');
           const fallbackResponse = await fetch(`${baseUrl}?${fallbackScreenshotParams.toString()}`);
           if (fallbackResponse.ok) {
             const fallbackBlob = await fallbackResponse.blob();
             if (fallbackBlob.size > 0 && await validateImage(fallbackBlob)) {
-              const projectId = 'default-project-id';
               const screenshotUrl = await uploadScreenshot(fallbackBlob, projectId);
-              return { html, screenshot: screenshotUrl, timestamp };
+              return { html, screenshot: screenshotUrl, timestamp, palette: [] };
+            } else {
+              console.log('[ScrapingBee] Second fallback also failed, trying DOM-based screenshot...');
+              
+              // Third attempt - Use DOM screenshot with different rendering parameters
+              const domScreenshotParams = new URLSearchParams({
+                'api_key': apiKey,
+                'url': cleanUrl,
+                'screenshot': 'true',
+                'window_width': '1280',  // Use different dimensions
+                'window_height': '800',
+                'screenshot_full_page': 'false', // Only capture viewport
+                'premium_proxy': 'true',
+                'block_resource': '.svg,.woff,.woff2', // Block some resources to make page lighter
+                'wait': '8000',
+                'render_js': 'true',
+                'js_scenario': JSON.stringify({
+                  "instructions": [
+                    { "wait": 3000 },
+                    { "evaluate": "document.querySelectorAll('a[href*=\"cookie\"], .cookie, #cookie, .gdpr, #gdpr').forEach(el => el.remove())" }, // Remove cookie banners
+                    { "evaluate": "document.querySelectorAll('.modal, #modal, .popup, #popup').forEach(el => el.remove())" }, // Remove modals
+                    { "wait": 1000 },
+                    { "scroll_y": 100 },
+                    { "wait": 500 }
+                  ]
+                })
+              });
+              
+              console.log('[ScrapingBee] DOM screenshot params:', {
+                url: cleanUrl,
+                screenshot: 'true',
+                window_width: '1280',
+                window_height: '800',
+                screenshot_full_page: 'false',
+                premium_proxy: 'true',
+                block_resource: '.svg,.woff,.woff2',
+                wait: '8000',
+                render_js: 'true',
+                js_scenario: 'Dynamic scroll and cleanup scenario'
+              });
+              const domResponse = await fetch(`${baseUrl}?${domScreenshotParams.toString()}`);
+              
+              if (domResponse.ok) {
+                const domBlob = await domResponse.blob();
+                if (domBlob.size > 0 && await validateImage(domBlob)) {
+                  const screenshotUrl = await uploadScreenshot(domBlob, projectId);
+                  return { html, screenshot: screenshotUrl, timestamp, palette: [] };
+                }
+              }
             }
           }
         } else {
-          const projectId = 'default-project-id';
           const screenshotUrl = await uploadScreenshot(screenshotBlob, projectId);
           // Extract site color palette using ColorThief.
-          let palette: number[][] = [];
           try {
-            palette = await extractSitePalette(screenshotUrl);
+            const palette = await extractSitePalette(screenshotUrl);
             console.log('[ScrapingBee] Got palette from ColorThief:', palette);
-            const dominantColor = palette.length > 0 ? palette[0] : [];
-            console.log('[ScrapingBee] Dominant color:', dominantColor);
             return { html, screenshot: screenshotUrl, timestamp, palette };
           } catch (err) {
             console.error('Failed to extract color palette:', err);
-            return { html, screenshot: screenshotUrl, timestamp };
+            return { html, screenshot: screenshotUrl, timestamp, palette: [] };
           }
         }
       } else {
@@ -138,7 +221,7 @@ export async function makeScrapingBeeRequest(
 
     // Return HTML only if screenshot fails
     console.log('[ScrapingBee] Continuing with HTML only');
-    return { html, timestamp };
+    return { html, timestamp, palette: [] };
 
   } catch (error) {
     console.error('[ScrapingBee] Request failed:', error);
@@ -156,7 +239,7 @@ export async function makeScrapingBeeRequest(
     )) {
       console.log(`[ScrapingBee] Network error, retrying (${retryCount + 1}/${MAX_RETRIES})...`);
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (retryCount + 1)));
-      return makeScrapingBeeRequest(url, withJs, retryCount + 1);
+      return makeScrapingBeeRequest(url, withJs, retryCount + 1, projectId);
     }
     
     throw new Error('Failed to scrape website. Please check the URL and try again.');
@@ -174,6 +257,7 @@ async function validateImage(blob: Blob): Promise<boolean> {
       if (!resolved) {
         resolved = true;
         URL.revokeObjectURL(url);
+        console.log('[ValidateImage] Timeout - image validation failed');
         resolve(false);
       }
     }, 5000); // Timeout after 5000 ms (5 seconds)
@@ -182,8 +266,63 @@ async function validateImage(blob: Blob): Promise<boolean> {
       if (!resolved) {
         resolved = true;
         clearTimeout(timer);
-        URL.revokeObjectURL(url);
-        resolve(true);
+        
+        // Check if image is valid (not just loaded but has actual content)
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        if (!context || img.width === 0 || img.height === 0) {
+          console.log('[ValidateImage] Invalid image dimensions:', { width: img.width, height: img.height });
+          URL.revokeObjectURL(url);
+          resolve(false);
+          return;
+        }
+        
+        context.drawImage(img, 0, 0);
+        
+        // Check if image is just white/blank by sampling pixel data
+        try {
+          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          
+          // Calculate average brightness and check if it's very bright (close to white)
+          let totalBrightness = 0;
+          let totalPixels = 0;
+          
+          // Sample at most 1000 pixels for performance
+          const pixelStep = Math.max(1, Math.floor(data.length / 4000));
+          
+          for (let i = 0; i < data.length; i += pixelStep * 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            
+            // Calculate brightness 
+            const brightness = (r + g + b) / 3;
+            totalBrightness += brightness;
+            totalPixels++;
+          }
+          
+          const avgBrightness = totalBrightness / totalPixels;
+          const isBlank = avgBrightness > 240; // Very close to white
+          
+          console.log('[ValidateImage] Image analysis:', { 
+            avgBrightness,
+            isBlank,
+            width: img.width,
+            height: img.height,
+            sampledPixels: totalPixels
+          });
+          
+          URL.revokeObjectURL(url);
+          resolve(!isBlank);
+        } catch (error) {
+          console.error('[ValidateImage] Error analyzing image:', error);
+          URL.revokeObjectURL(url);
+          resolve(false);
+        }
       }
     };
 
@@ -191,6 +330,7 @@ async function validateImage(blob: Blob): Promise<boolean> {
       if (!resolved) {
         resolved = true;
         clearTimeout(timer);
+        console.log('[ValidateImage] Error loading image');
         URL.revokeObjectURL(url);
         resolve(false);
       }
@@ -203,7 +343,7 @@ async function validateImage(blob: Blob): Promise<boolean> {
 // Helper function to extract a color palette from the screenshot using ColorThief,
 // with a timeout to prevent hanging.
 async function extractSitePalette(screenshotUrl: string): Promise<number[][]> {
-  return new Promise((resolve, reject) => {
+  return new Promise<number[][]>((resolve) => {
     const img = new Image();
     img.crossOrigin = 'Anonymous';
     let resolved = false;
@@ -212,7 +352,7 @@ async function extractSitePalette(screenshotUrl: string): Promise<number[][]> {
       if (!resolved) {
         resolved = true;
         console.error('[ColorThief] Timeout while extracting palette');
-        reject(new Error('extractSitePalette: timeout'));
+        resolve([]); // Return empty array instead of rejecting
       }
     }, 5000);
 
@@ -224,10 +364,16 @@ async function extractSitePalette(screenshotUrl: string): Promise<number[][]> {
           const colorThief = new ColorThief();
           const palette = colorThief.getPalette(img, 6);
           console.log('[ColorThief] Successfully extracted palette:', palette);
+          // If palette is null or undefined, return an empty array
+          if (!palette) {
+            console.log('[ColorThief] Palette returned null, using empty array');
+            resolve([]);
+            return;
+          }
           resolve(palette);
         } catch (error) {
           console.error('[ColorThief] Error extracting palette:', error);
-          reject(error);
+          resolve([]); // Return empty array instead of rejecting
         }
       }
     };
@@ -237,7 +383,7 @@ async function extractSitePalette(screenshotUrl: string): Promise<number[][]> {
         resolved = true;
         clearTimeout(timer);
         console.error('[ScrapingBee] extractSitePalette error:', err);
-        reject(err);
+        resolve([]); // Return empty array instead of rejecting
       }
     };
 

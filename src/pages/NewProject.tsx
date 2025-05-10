@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Globe,
   Settings,
@@ -17,6 +17,7 @@ import { uploadLogo } from '../lib/storage/uploadLogo';
 import ScrapingProgressModal from '../components/ScrapingProgressModal';
 import AIGenerationProgressModal from '../components/AIGenerationProgressModal';
 import type { Project, ProjectSettings, WebsiteStyle } from '../types/database';
+import { deductTokens } from '../services/tokens';
 
 type Step = 'url' | 'settings';
 
@@ -34,7 +35,9 @@ function NewProject() {
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [brand, setBrand] = useState('');
   const [additionalInstructions, setAdditionalInstructions] = useState('');
-  const [extractedAssets, setExtractedAssets] = useState<WebsiteStyle | null>(null);
+  const [extractedAssets, setExtractedAssets] = useState<WebsiteStyle | null>(
+    null
+  );
   const [selectedColor, setSelectedColor] = useState('');
   const [customColor, setCustomColor] = useState('');
   const [selectedFont, setSelectedFont] = useState('');
@@ -49,8 +52,16 @@ function NewProject() {
   }, [extractedAssets]);
 
   const steps = [
-    { id: 'url' as const, title: 'Website URL', icon: <Globe className="h-6 w-6" /> },
-    { id: 'settings' as const, title: 'Settings', icon: <Settings className="h-6 w-6" /> },
+    {
+      id: 'url' as const,
+      title: 'Website URL',
+      icon: <Globe className='h-6 w-6' />,
+    },
+    {
+      id: 'settings' as const,
+      title: 'Settings',
+      icon: <Settings className='h-6 w-6' />,
+    },
   ];
 
   const validateForm = () => {
@@ -92,12 +103,52 @@ function NewProject() {
 
     try {
       // Check for required environment variables
-      if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-        throw new Error('Please click the "Connect to Supabase" button in the top right to set up your database connection.');
+      if (
+        !import.meta.env.VITE_SUPABASE_URL ||
+        !import.meta.env.VITE_SUPABASE_ANON_KEY
+      ) {
+        throw new Error(
+          'Please click the "Connect to Supabase" button in the top right to set up your database connection.'
+        );
       }
 
-      if (!import.meta.env.VITE_SCRAPINGBEE_API_KEY || !import.meta.env.VITE_OPENAI_API_KEY) {
-        throw new Error('Please click the "Connect to Supabase" button in the top right to set up your environment variables.');
+      if (
+        !import.meta.env.VITE_SCRAPINGBEE_API_KEY ||
+        !import.meta.env.VITE_OPENAI_API_KEY
+      ) {
+        throw new Error(
+          'Please click the "Connect to Supabase" button in the top right to set up your environment variables.'
+        );
+      }
+
+      // Deduct tokens for the scraping phase (30% of total cost)
+      if (!user) {
+        setError('You must be logged in to continue');
+        return;
+      }
+
+      try {
+        const scrapingTokenCost = 40; // Fixed cost for scraping
+        await deductTokens(
+          user.id,
+          scrapingTokenCost,
+          'Website scraping and asset extraction'
+        );
+        console.log(`Deducted ${scrapingTokenCost} tokens for scraping phase`);
+      } catch (err) {
+        console.error('Error deducting tokens for scraping:', err);
+        if (err instanceof Error && err.message === 'Insufficient tokens') {
+          setError(
+            'You do not have enough tokens. Please upgrade your plan or purchase more tokens.'
+          );
+          setIsLoading(false);
+          setIsScraping(false);
+          return;
+        }
+        setError('Failed to check token balance');
+        setIsLoading(false);
+        setIsScraping(false);
+        return;
       }
 
       // Create the project first
@@ -106,24 +157,31 @@ function NewProject() {
         name: projectName.trim(),
         website_url: websiteUrl.trim(),
         settings: {},
-        status: 'draft'
+        status: 'draft',
       });
 
       setCurrentProject(project);
 
       // Scrape website with project ID for asset storage
       console.log('Scraping website...');
-      const scrapedAssets = await scrapeWebsite(websiteUrl.trim(), project.id, brand.trim());
+      const scrapedAssets = await scrapeWebsite(
+        websiteUrl.trim(),
+        project.id,
+        brand.trim()
+      );
       console.log('Full scraped assets:', scrapedAssets);
       if (scrapedAssets.colors?.length) {
-        console.log("Using pre-formatted colors:", scrapedAssets.colors);
+        console.log('Using pre-formatted colors:', scrapedAssets.colors);
         // Set default dominant color to the first screenshot color if none is selected.
         if (!selectedColor) {
           setSelectedColor(scrapedAssets.colors[0]);
-          console.log("Set default dominant color to:", scrapedAssets.colors[0]);
+          console.log(
+            'Set default dominant color to:',
+            scrapedAssets.colors[0]
+          );
         }
       } else {
-        console.log("No colors found in scraped assets");
+        console.log('No colors found in scraped assets');
       }
       setExtractedAssets(scrapedAssets);
 
@@ -134,7 +192,7 @@ function NewProject() {
         created_by: user!.id,
         is_current: true,
         html_content: '',
-        marketing_content: ''
+        marketing_content: '',
       });
 
       setCurrentStep('settings');
@@ -158,6 +216,35 @@ function NewProject() {
 
     if (!currentProject) {
       setError('Project not initialized');
+      return;
+    }
+
+    // Check if user is logged in and deduct tokens for generation phase
+    if (!user) {
+      setError('You must be logged in to continue');
+      return;
+    }
+
+    // Deduct tokens for content generation phase (OpenAI generation)
+    try {
+      const generationTokenCost = 30; // Fixed cost for AI generation
+      await deductTokens(
+        user.id,
+        generationTokenCost,
+        'Landing page AI generation'
+      );
+      console.log(
+        `Deducted ${generationTokenCost} tokens for generation phase`
+      );
+    } catch (err) {
+      console.error('Error deducting tokens for generation:', err);
+      if (err instanceof Error && err.message === 'Insufficient tokens') {
+        setError(
+          'You do not have enough tokens. Please upgrade your plan or purchase more tokens.'
+        );
+        return;
+      }
+      setError('Failed to check token balance');
       return;
     }
 
@@ -197,7 +284,7 @@ Additional instructions:
 ${additionalInstructions.trim()}`;
 
       const result = await generateLandingPage(
-        prompt, 
+        prompt,
         finalStyle,
         extractedAssets?.screenshot
       );
@@ -249,12 +336,12 @@ ${additionalInstructions.trim()}`;
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 relative">
+    <div className='min-h-screen bg-gray-50 relative'>
       <Navbar />
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className='max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8'>
         {/* Steps */}
-        <nav aria-label="Progress" className="mb-8">
-          <ol className="flex items-center">
+        <nav aria-label='Progress' className='mb-8'>
+          <ol className='flex items-center'>
             {steps.map((step, index) => (
               <li
                 key={step.id}
@@ -262,7 +349,7 @@ ${additionalInstructions.trim()}`;
                   index < steps.length - 1 ? 'pr-8 sm:pr-20' : ''
                 }`}
               >
-                <div className="flex items-center">
+                <div className='flex items-center'>
                   <div
                     className={`${
                       currentStep === step.id
@@ -272,22 +359,20 @@ ${additionalInstructions.trim()}`;
                   >
                     <div
                       className={
-                        currentStep === step.id
-                          ? 'text-white'
-                          : 'text-gray-500'
+                        currentStep === step.id ? 'text-white' : 'text-gray-500'
                       }
                     >
                       {step.icon}
                     </div>
                   </div>
                   {index < steps.length - 1 && (
-                    <div className="hidden sm:block absolute top-0 right-0 h-full w-5">
-                      <div className="h-0.5 relative top-4 bg-gray-300 w-full" />
+                    <div className='hidden sm:block absolute top-0 right-0 h-full w-5'>
+                      <div className='h-0.5 relative top-4 bg-gray-300 w-full' />
                     </div>
                   )}
                 </div>
-                <div className="mt-2">
-                  <span className="text-sm font-medium text-gray-900">
+                <div className='mt-2'>
+                  <span className='text-sm font-medium text-gray-900'>
                     {step.title}
                   </span>
                 </div>
@@ -298,66 +383,66 @@ ${additionalInstructions.trim()}`;
 
         {/* Error Message */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 rounded-md">
-            <div className="flex">
-              <AlertCircle className="h-5 w-5 text-red-400" />
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">{error}</h3>
+          <div className='mb-6 p-4 bg-red-50 rounded-md'>
+            <div className='flex'>
+              <AlertCircle className='h-5 w-5 text-red-400' />
+              <div className='ml-3'>
+                <h3 className='text-sm font-medium text-red-800'>{error}</h3>
               </div>
             </div>
           </div>
         )}
 
         {/* Step 1 Content */}
-        <div className="bg-white shadow-sm rounded-lg p-6">
+        <div className='bg-white shadow-sm rounded-lg p-6'>
           {currentStep === 'url' && (
-            <div className="space-y-6">
+            <div className='space-y-6'>
               <div>
                 <label
-                  htmlFor="projectName"
-                  className="block text-sm font-medium text-gray-700"
+                  htmlFor='projectName'
+                  className='block text-sm font-medium text-gray-700'
                 >
                   Project Name
                 </label>
                 <input
-                  type="text"
-                  id="projectName"
+                  type='text'
+                  id='projectName'
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
-                  placeholder="My Landing Page"
+                  className='mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2'
+                  placeholder='My Landing Page'
                 />
               </div>
               <div>
                 <label
-                  htmlFor="websiteUrl"
-                  className="block text-sm font-medium text-gray-700"
+                  htmlFor='websiteUrl'
+                  className='block text-sm font-medium text-gray-700'
                 >
                   Website URL
                 </label>
                 <input
-                  type="text"
-                  id="websiteUrl"
+                  type='text'
+                  id='websiteUrl'
                   value={websiteUrl}
                   onChange={(e) => setWebsiteUrl(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
-                  placeholder="https://example.com"
+                  className='mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2'
+                  placeholder='https://example.com'
                 />
                 <label
-                  htmlFor="brand"
-                  className="block text-sm font-medium text-gray-700 mt-4"
+                  htmlFor='brand'
+                  className='block text-sm font-medium text-gray-700 mt-4'
                 >
                   Brand (optional)
                 </label>
                 <input
-                  type="text"
-                  id="brand"
+                  type='text'
+                  id='brand'
                   value={brand}
                   onChange={(e) => setBrand(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
-                  placeholder="Your brand name"
+                  className='mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2'
+                  placeholder='Your brand name'
                 />
-                <p className="mt-2 text-sm text-gray-500">
+                <p className='mt-2 text-sm text-gray-500'>
                   We'll extract styles and assets from this URL to match your
                   brand.
                 </p>
@@ -366,38 +451,38 @@ ${additionalInstructions.trim()}`;
           )}
 
           {currentStep === 'settings' && (
-            <div className="space-y-6">
+            <div className='space-y-6'>
               {/* Extracted Assets */}
               {extractedAssets && (
                 <div>
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">
+                  <h3 className='text-sm font-medium text-gray-700 mb-2'>
                     Extracted Assets
                   </h3>
-                  <div className="bg-gray-50 rounded-md p-4">
-                    <div className="mb-4">
-                      <h4 className="text-xs font-medium text-gray-500 mb-2">
+                  <div className='bg-gray-50 rounded-md p-4'>
+                    <div className='mb-4'>
+                      <h4 className='text-xs font-medium text-gray-500 mb-2'>
                         Colors
                       </h4>
-                      <div className="flex gap-2">
+                      <div className='flex gap-2'>
                         {(extractedAssets.colors || []).map((color) => (
                           <div
                             key={color}
-                            className="w-8 h-8 rounded-full border border-gray-200"
+                            className='w-8 h-8 rounded-full border border-gray-200'
                             style={{ backgroundColor: color }}
                             title={color}
                           />
                         ))}
                       </div>
                     </div>
-                    <div className="mb-4">
-                      <h4 className="text-xs font-medium text-gray-500 mb-2">
+                    <div className='mb-4'>
+                      <h4 className='text-xs font-medium text-gray-500 mb-2'>
                         Fonts
                       </h4>
-                      <div className="flex gap-2">
+                      <div className='flex gap-2'>
                         {(extractedAssets.fonts || []).map((font) => (
                           <span
                             key={font}
-                            className="inline-flex items-center px-2 py-1 rounded-md bg-white text-xs text-gray-700 border border-gray-200"
+                            className='inline-flex items-center px-2 py-1 rounded-md bg-white text-xs text-gray-700 border border-gray-200'
                           >
                             {font}
                           </span>
@@ -405,36 +490,48 @@ ${additionalInstructions.trim()}`;
                       </div>
                     </div>
                     <div>
-                      <h4 className="text-xs font-medium text-gray-500 mb-2">
+                      <h4 className='text-xs font-medium text-gray-500 mb-2'>
                         Scraped Logo
                       </h4>
-                      <div className="flex items-center gap-4">
+                      <div className='flex items-center gap-4'>
                         {logo ? (
-                          <img src={logo} alt="Logo preview" className="w-24 h-auto border rounded" />
+                          <img
+                            src={logo}
+                            alt='Logo preview'
+                            className='w-24 h-auto border rounded'
+                          />
                         ) : (
-                          <div className="w-24 h-24 bg-gray-200 flex items-center justify-center rounded">
-                            <span className="text-gray-500 text-xs">No logo</span>
+                          <div className='w-24 h-24 bg-gray-200 flex items-center justify-center rounded'>
+                            <span className='text-gray-500 text-xs'>
+                              No logo
+                            </span>
                           </div>
                         )}
-                        <div className="text-sm text-gray-500">
-                          - Or -
-                        </div>
-                        <input type="file" accept="image/*" onChange={handleLogoUpload} />
+                        <div className='text-sm text-gray-500'>- Or -</div>
+                        <input
+                          type='file'
+                          accept='image/*'
+                          onChange={handleLogoUpload}
+                        />
                       </div>
                     </div>
                   </div>
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className='block text-sm font-medium text-gray-700'>
                   Select Dominant Color
                 </label>
-                <div className="flex gap-2 mt-1">
+                <div className='flex gap-2 mt-1'>
                   {(extractedAssets?.colors || []).map((color: string) => (
                     <button
                       key={color}
-                      type="button"
-                      className={`w-8 h-8 rounded-full border ${selectedColor === color ? "ring-2 ring-indigo-500" : "border-gray-200"}`}
+                      type='button'
+                      className={`w-8 h-8 rounded-full border ${
+                        selectedColor === color
+                          ? 'ring-2 ring-indigo-500'
+                          : 'border-gray-200'
+                      }`}
                       style={{ backgroundColor: color }}
                       onClick={() => setSelectedColor(color)}
                       title={color}
@@ -442,105 +539,123 @@ ${additionalInstructions.trim()}`;
                   ))}
                 </div>
                 <button
-                  type="button"
-                  className={`w-8 h-8 rounded-full border flex items-center justify-center ${selectedColor === 'custom' ? "ring-2 ring-indigo-500" : "border-gray-200"}`}
+                  type='button'
+                  className={`w-8 h-8 rounded-full border flex items-center justify-center ${
+                    selectedColor === 'custom'
+                      ? 'ring-2 ring-indigo-500'
+                      : 'border-gray-200'
+                  }`}
                   onClick={() => setSelectedColor('custom')}
-                  title="Custom"
+                  title='Custom'
                 >
-                  <span className="text-xs">+</span>
+                  <span className='text-xs'>+</span>
                 </button>
                 {selectedColor === 'custom' && (
                   <input
-                    type="text"
+                    type='text'
                     value={customColor}
                     onChange={(e) => setCustomColor(e.target.value)}
-                    placeholder="Enter custom HEX color"
-                    className="mt-2 block w-full rounded-md border-gray-300 px-3 py-2"
+                    placeholder='Enter custom HEX color'
+                    className='mt-2 block w-full rounded-md border-gray-300 px-3 py-2'
                   />
                 )}
               </div>
-              <div className="mt-4">
-                <label htmlFor="primaryFont" className="block text-sm font-medium text-gray-700">
+              <div className='mt-4'>
+                <label
+                  htmlFor='primaryFont'
+                  className='block text-sm font-medium text-gray-700'
+                >
                   Select Primary Font
                 </label>
-                {extractedAssets && extractedAssets.fonts && extractedAssets.fonts.length > 0 ? (
+                {extractedAssets &&
+                extractedAssets.fonts &&
+                extractedAssets.fonts.length > 0 ? (
                   <>
                     <select
-                      id="primaryFont"
+                      id='primaryFont'
                       value={selectedFont}
                       onChange={(e) => setSelectedFont(e.target.value)}
-                      className="mt-1 block w-full rounded-md border-gray-300 px-3 py-2"
+                      className='mt-1 block w-full rounded-md border-gray-300 px-3 py-2'
                     >
-                      {extractedAssets.fonts.map(font => (
+                      {extractedAssets.fonts.map((font) => (
                         <option key={font} value={font}>
                           {font}
                         </option>
                       ))}
-                      <option value="custom">Custom</option>
+                      <option value='custom'>Custom</option>
                     </select>
                     {selectedFont === 'custom' && (
-                      <div className="mt-2">
-                        <label htmlFor="customFont" className="block text-sm font-medium text-gray-700">
+                      <div className='mt-2'>
+                        <label
+                          htmlFor='customFont'
+                          className='block text-sm font-medium text-gray-700'
+                        >
                           Custom Font
                         </label>
                         <input
-                          type="text"
-                          id="customFont"
+                          type='text'
+                          id='customFont'
                           value={customFont}
                           onChange={(e) => setCustomFont(e.target.value)}
-                          placeholder="Enter custom font"
-                          className="mt-1 block w-full rounded-md border-gray-300 px-3 py-2"
+                          placeholder='Enter custom font'
+                          className='mt-1 block w-full rounded-md border-gray-300 px-3 py-2'
                         />
                       </div>
                     )}
                   </>
                 ) : (
                   <div>
-                    <label htmlFor="customFont" className="block text-sm font-medium text-gray-700">
+                    <label
+                      htmlFor='customFont'
+                      className='block text-sm font-medium text-gray-700'
+                    >
                       Primary Font (Custom)
                     </label>
                     <input
-                      type="text"
-                      id="customFont"
+                      type='text'
+                      id='customFont'
                       value={customFont}
                       onChange={(e) => setCustomFont(e.target.value)}
-                      placeholder="Enter custom font"
-                      className="mt-1 block w-full rounded-md border-gray-300 px-3 py-2"
+                      placeholder='Enter custom font'
+                      className='mt-1 block w-full rounded-md border-gray-300 px-3 py-2'
                     />
                   </div>
                 )}
               </div>
               {/* Additional Instructions */}
-              <div className="mb-4">
-                <label htmlFor="additionalInstructions" className="block text-sm font-medium text-gray-700">
+              <div className='mb-4'>
+                <label
+                  htmlFor='additionalInstructions'
+                  className='block text-sm font-medium text-gray-700'
+                >
                   Additional Instructions
                 </label>
                 <textarea
-                  id="additionalInstructions"
+                  id='additionalInstructions'
                   value={additionalInstructions}
                   onChange={(e) => setAdditionalInstructions(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 px-3 py-2"
+                  className='mt-1 block w-full rounded-md border-gray-300 px-3 py-2'
                   rows={4}
-                  placeholder="Enter any extra instructions..."
+                  placeholder='Enter any extra instructions...'
                 ></textarea>
               </div>
             </div>
           )}
 
           {/* Navigation */}
-          <div className="mt-8 flex justify-between">
+          <div className='mt-8 flex justify-between'>
             {currentStep !== 'url' && (
               <button
-                type="button"
+                type='button'
                 onClick={() => setCurrentStep('url')}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                className='inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50'
               >
-                <ArrowLeft className="h-4 w-4 mr-2" />
+                <ArrowLeft className='h-4 w-4 mr-2' />
                 Back
               </button>
             )}
             <button
-              type="button"
+              type='button'
               onClick={(e) => {
                 if (currentStep === 'url') {
                   handleUrlSubmit(e);
@@ -549,14 +664,16 @@ ${additionalInstructions.trim()}`;
                 }
               }}
               disabled={isLoading}
-              className="ml-auto inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+              className='ml-auto inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50'
             >
               {isLoading ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className='h-4 w-4 mr-2 animate-spin' />
               ) : (
-                <ArrowRight className="h-4 w-4 mr-2" />
+                <ArrowRight className='h-4 w-4 mr-2' />
               )}
-              {currentStep === 'settings' ? 'Generate Landing Page' : 'Continue'}
+              {currentStep === 'settings'
+                ? 'Generate Landing Page'
+                : 'Continue'}
             </button>
           </div>
         </div>
@@ -564,12 +681,12 @@ ${additionalInstructions.trim()}`;
       {/* Scraping Progress Modal */}
       <ScrapingProgressModal
         isOpen={isScraping}
-        message="Scraping website data, gathering assets, and preparing your landing page. Please wait..."
+        message='Scraping website data, gathering assets, and preparing your landing page. Please wait...'
       />
       {/* AI Generation Progress Modal */}
       <AIGenerationProgressModal
         isOpen={isGenerating}
-        message="Our AI is drafting a perfect landing page for your brand. Please wait..."
+        message='Our AI is drafting a perfect landing page for your brand. Please wait...'
       />
     </div>
   );

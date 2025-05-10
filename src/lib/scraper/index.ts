@@ -6,44 +6,56 @@ import { resolveUrl } from './utils';
 import type { ScrapingLog, ExtractedAssets } from './types';
 
 async function logScrapingResult(projectId: string, log: ScrapingLog): Promise<void> {
-  console.log('[Scraping Log] Recording scraping result:', log);
-  
   try {
-    const { error } = await supabase.from('scraping_logs').insert({
-      project_id: projectId,
-      url: log.url,
-      success: log.success,
-      assets_found: log.assets_found,
-      errors: log.errors,
-      duration_ms: log.duration_ms,
-      retries: log.retries
-    });
-    
+    const { error } = await supabase
+      .from('scraping_logs')
+      .insert({
+        project_id: projectId,
+        url: log.url,
+        success: log.success,
+        errors: log.errors,
+        duration_ms: log.duration_ms,
+        assets_found: log.assets_found,
+        retries: log.retries
+      });
+
     if (error) {
-      console.error('[Scraping Log] Failed to store log:', error);
+      console.error('[Website Scraper] Error logging scraping result:', error);
     }
-  } catch (error) {
-    console.error('[Scraping Log] Error storing log:', error);
+  } catch (err) {
+    console.error('[Website Scraper] Failed to log scraping result:', err);
   }
 }
 
-export async function scrapeWebsite(url: string, projectId: string, brand?: string): Promise<ExtractedAssets> {
+/**
+ * Scrapes a website and returns a structured object with the extracted data
+ * @param {string} url - Website URL to scrape
+ * @param {string} projectId - ID of the project (used for asset storage)
+ * @param {string} brand - Optional brand name to enhance scraping
+ * @returns {Promise<ExtractedAssets>} Extracted assets data
+ */
+export async function scrapeWebsite(
+  url: string, 
+  projectId: string, 
+  brand?: string
+): Promise<ExtractedAssets> {
   console.log('[Website Scraper] Starting website scrape:', { url, projectId, brand });
   const startTime = Date.now();
   const retryCount = 0;
-  
+
   try {
     // Check for required environment variables
     if (!import.meta.env.VITE_SCRAPINGBEE_API_KEY || !import.meta.env.VITE_OPENAI_API_KEY) {
       throw new Error('Please click the "Connect to Supabase" button to set up your environment variables.');
     }
 
+    // Make the ScrapingBee API call
     console.log('[Website Scraper] Making ScrapingBee request...');
-    const scrapingResult = await makeScrapingBeeRequest(url);
+    const scrapingResult = await makeScrapingBeeRequest(url, true, 0, projectId);
     console.log('[Scraper] Raw palette from ColorThief:', scrapingResult.palette);
     
     // Transform RGB arrays to CSS color strings
-    const colors = scrapingResult.palette 
+    const colors = scrapingResult.palette && Array.isArray(scrapingResult.palette)
       ? scrapingResult.palette.map(rgb => `rgb(${rgb.join(', ')})`)
       : [];
     console.log('[Scraper] Transformed colors:', colors);

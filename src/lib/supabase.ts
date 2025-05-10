@@ -1,9 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Project, Version, Asset } from '../types/database';
 
+// Get the environment variables
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// Validate environment variables
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Missing Supabase environment variables');
+}
+
+// Create a single instance of the Supabase client
 export const supabase = createClient<{
   public: {
     Tables: {
@@ -16,9 +23,37 @@ export const supabase = createClient<{
       assets: {
         Row: Asset;
       };
+      user_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          plan_type: string;
+          token_balance: number;
+          tokens_used: number;
+          next_reset_date: string;
+          stripe_customer_id: string | null;
+          stripe_subscription_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      token_transactions: {
+        Row: {
+          id: string;
+          user_id: string;
+          amount: number;
+          transaction_type: string;
+          description: string | null;
+          project_id: string | null;
+          created_at: string;
+        };
+      };
     };
   };
-}>(supabaseUrl, supabaseAnonKey);
+}>(
+  supabaseUrl || '',
+  supabaseAnonKey || ''
+);
 
 export async function getProjects() {
   const { data, error } = await supabase

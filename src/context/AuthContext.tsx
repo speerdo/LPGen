@@ -1,81 +1,127 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
+import React, { createContext, useState, useEffect, useContext } from 'react';
+import { User, AuthError, Session } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
+import { setupTokenSystem, ensureUserSubscription } from '../lib/setupDatabase';
 
 interface AuthContextType {
   user: User | null;
-  supabase: SupabaseClient;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  loading: boolean;
+  signIn: (
+    email: string,
+    password: string
+  ) => Promise<{ error: AuthError | null }>;
+  signUp: (
+    email: string,
+    password: string
+  ) => Promise<{
+    error: AuthError | null;
+    data: { user: User | null; session: Session | null } | null;
+  }>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [user, setUser] = useState<User | null>(null);
-  const [supabase] = useState(() => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      return null;
-    }
-
-    return createClient(supabaseUrl, supabaseAnonKey);
-  });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!supabase) return;
+    // Initial system setup
+    setupTokenSystem().catch(console.error);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    // Setup auth state change listener
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+
+        // Ensure the user has a subscription record when they log in
+        await ensureUserSubscription(session.user.id).catch(console.error);
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
-  }, [supabase]);
+    // Initial session check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser(session.user);
+
+        // Ensure the user has a subscription record
+        ensureUserSubscription(session.user.id).catch(console.error);
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const signIn = async (email: string, password: string) => {
-    if (!supabase) throw new Error('Supabase client not initialized');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      return { error };
+    } catch (error) {
+      return { error: error as AuthError };
+    }
   };
 
   const signUp = async (email: string, password: string) => {
-    if (!supabase) throw new Error('Supabase client not initialized');
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      // Create subscription for new user if sign up was successful
+      if (data?.user && !error) {
+        await ensureUserSubscription(data.user.id).catch(console.error);
+      }
+
+      return { data, error };
+    } catch (error) {
+      return { data: null, error: error as AuthError };
+    }
   };
 
   const signOut = async () => {
-    if (!supabase) throw new Error('Supabase client not initialized');
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    await supabase.auth.signOut();
   };
 
-  if (!supabase) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Configuration Required</h2>
-          <p className="text-gray-600">
-            Please click the "Connect to Supabase" button in the top right to set up your database connection.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const resetPassword = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      return { error };
+    } catch (error) {
+      return { error: error as AuthError };
+    }
+  };
 
   return (
-    <AuthContext.Provider value={{ user, supabase, signIn, signUp, signOut }}>
+    <AuthContext.Provider
+      value={{ user, loading, signIn, signUp, signOut, resetPassword }}
+    >
       {children}
     </AuthContext.Provider>
   );
-}
+};
 
-export function useAuth() {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}
+};

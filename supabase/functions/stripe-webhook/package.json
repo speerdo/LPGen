@@ -1,0 +1,11 @@
+{
+  "name": "stripe-webhook",
+  "version": "1.0.0",
+  "description": "Stripe webhook handler for LP Gen",
+  "main": "index.ts",
+  "private": true,
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.7",
+    "stripe": "^17.7.0"
+  }
+} 
